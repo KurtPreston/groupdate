@@ -42,6 +42,44 @@ module Groupdate
             else
               raise "Unrecognized time zone"
             end
+
+            start_of_week = :monday
+            day_of_week_offset = case connection.adapter_name
+              when "MySQL", "Mysql2", "PostgresSQL"
+                case start_of_week
+                when :sunday
+                  1
+                when :monday
+                  0
+                when :tuesday
+                  6
+                when :wednesday
+                  5
+                when :thursday
+                  4
+                when :friday
+                  3
+                when :saturday
+                  2
+                end
+              when 'SQLite'
+                when :sunday
+                  6
+                when :monday
+                  0
+                when :tuesday
+                  1
+                when :wednesday
+                  2
+                when :thursday
+                  3
+                when :friday
+                  4
+                when :saturday
+                  5
+                end
+              end
+
             query =
               case connection.adapter_name
               when "MySQL", "Mysql2"
@@ -52,7 +90,7 @@ module Groupdate
                 when "hour_of_day"
                   ["EXTRACT(HOUR from CONVERT_TZ(#{column}, '+00:00', ?))", time_zone]
                 when "week"
-                  ["CONVERT_TZ(DATE_FORMAT(CONVERT_TZ(DATE_SUB(#{column}, INTERVAL (DAYOFWEEK(CONVERT_TZ(#{column}, '+00:00', ?)) - 1) DAY), '+00:00', ?), '%Y-%m-%d 00:00:00'), ?, '+00:00')", time_zone, time_zone, time_zone]
+                  ["CONVERT_TZ(DATE_FORMAT(CONVERT_TZ(DATE_SUB(#{column}, INTERVAL (DAYOFWEEK(CONVERT_TZ(#{column}, '+00:00', ?)) - #{day_of_week_offset}) DAY), '+00:00', ?), '%Y-%m-%d 00:00:00'), ?, '+00:00')", time_zone, time_zone, time_zone]
                 else
                   format =
                     case field
@@ -79,13 +117,13 @@ module Groupdate
                 when "hour_of_day"
                   ["EXTRACT(HOUR from #{column}::timestamptz AT TIME ZONE ?)", time_zone]
                 when "week" # start on Sunday, not PostgreSQL default Monday
-                  ["(DATE_TRUNC('#{field}', (#{column}::timestamptz + INTERVAL '1 day') AT TIME ZONE ?) - INTERVAL '1 day') AT TIME ZONE ?", time_zone, time_zone]
+                  ["(DATE_TRUNC('#{field}', (#{column}::timestamptz + INTERVAL '#{day_of_week_offset} day') AT TIME ZONE ?) - INTERVAL '#{day_of_week_offset} day') AT TIME ZONE ?", time_zone, time_zone]
                 else
                   ["DATE_TRUNC('#{field}', #{column}::timestamptz AT TIME ZONE ?) AT TIME ZONE ?", time_zone, time_zone]
                 end
               when 'SQLite'
                 if field == "week"
-                  ["strftime('%%Y-%%m-%%d 00:00:00 UTC', #{column}, '-6 days', 'weekday 0')"]
+                  ["strftime('%%Y-%%m-%%d 00:00:00 UTC', #{column}, '-#{day_of_week_offset} days', 'weekday 0')"]
                 else
                   format =
                     case field
